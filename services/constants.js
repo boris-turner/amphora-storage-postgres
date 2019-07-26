@@ -16,3 +16,4 @@ module.exports.REDIS_URL         = process.env.CLAY_STORAGE_POSTGRES_CACHE_HOST;
 
 // Application code
 module.exports.DATA_STRUCTURES   = ['components', 'layouts', 'pages', 'uris', 'lists', 'users'];
+module.exports.DATETIME_FIELDS   = ['createdAt', 'updateTime', 'publishTime', 'firstPublishTime'];
