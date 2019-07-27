@@ -1,6 +1,6 @@
 'use strict';
 
-const { POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, CONNECTION_POOL_MIN, CONNECTION_POOL_MAX } = require('../services/constants'),
+const { POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, CONNECTION_POOL_MIN, CONNECTION_POOL_MAX, TABLE_WITHOUT_META, TABLE_WITH_META, ENABLE_TIMESTAMP_FIELDS, TIMESTAMP_FIELDS } = require('../services/constants'),
   { notFoundError } = require('../services/errors'),
   { parseOrNot, wrapInObject, decode } = require('../services/utils'),
   { findSchemaAndTable, wrapJSONStringInObject } = require('../services/utils'),
@@ -65,14 +65,23 @@ function connect() {
     .catch(createDBIfNotExists);
 }
 
-function pullValFromRows(key, prop) {
+function pullValFromRows(key, prop, additionalProps = []) {
   return (resp) => {
     if (!resp.length) return Promise.reject(notFoundError(key));
 
     // if the value is a list wrapped in an object, return the list
     if (isList(key)) return parseOrNot(resp[0][prop])._value;
 
-    return resp[0][prop];
+    let val = resp[0][prop];
+
+    // extract additional columns, and add them into main payload, usually timestamp fields, if any
+    for (let i = 0; i < additionalProps.length; i++) {
+      if (additionalProps[i] !== prop) {
+        val[additionalProps[i]] = resp[0][additionalProps[i]];
+      }
+    }
+
+    return val;
   };
 }
 
@@ -98,11 +107,18 @@ function baseQuery(key) {
  */
 function get(key) {
   const dataProp = 'data';
+  let selects = [dataProp];
+
+  if (ENABLE_TIMESTAMP_FIELDS) {
+    for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
+      selects.push(TIMESTAMP_FIELDS[i]);
+    }
+  }
 
   return baseQuery(key)
-    .select(dataProp)
+    .select(...selects)
     .where('id', key)
-    .then(pullValFromRows(key, dataProp));
+    .then(pullValFromRows(key, dataProp, selects));
 }
 
 /**
@@ -134,6 +150,17 @@ function put(key, value) {
 
   // add data to the map
   columnToValueMap('data', wrapInObject(key, parseOrNot(value)), map);
+
+  // extract timestamp fields from data, and populate timestamp coulumns
+  if (ENABLE_TIMESTAMP_FIELDS && !isList(key)) {
+    for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
+      let field = TIMESTAMP_FIELDS[i];
+
+      if (value && value[field] !== undefined) {
+        columnToValueMap(name, value[field], map);
+      }
+    }
+  }
 
   let url;
 
@@ -217,6 +244,17 @@ function batch(ops) {
 
     columnToValueMap('data', wrapJSONStringInObject(key, value), map);
 
+    // extract timestamp fields from data, and populate timestamp coulumns
+    if (ENABLE_TIMESTAMP_FIELDS && !isList(key)) {
+      for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
+        let field = TIMESTAMP_FIELDS[i];
+
+        if (value && value[field] !== undefined) {
+          columnToValueMap(name, value[field], map);
+        }
+      }
+    }
+
     // add url column to map if putting a uri
     if (isUri(key)) {
       url = decode(key.split('/_uris/').pop());
@@ -243,7 +281,14 @@ function createReadStream(options) {
     selects = [];
 
   if (keys) selects.push('id');
-  if (values) selects.push('data');
+  if (values) {
+    selects.push('data');
+    if (ENABLE_TIMESTAMP_FIELDS) {
+      for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
+        selects.push(TIMESTAMP_FIELDS[i]);
+      }
+    }
+  }
 
   baseQuery(prefix)
     .select(...selects)
@@ -291,7 +336,7 @@ function putMeta(key, value) {
  * @returns {Promise}
  */
 function createTable(table) {
-  return raw('CREATE TABLE IF NOT EXISTS ?? ( id TEXT PRIMARY KEY NOT NULL, data JSONB );', [table]);
+  return raw(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITHOUT_META} );`, [table]);
 }
 
 /**
@@ -304,7 +349,7 @@ function createTable(table) {
  * @returns {Promise}
  */
 function createTableWithMeta(table) {
-  return raw('CREATE TABLE IF NOT EXISTS ?? ( id TEXT PRIMARY KEY NOT NULL, data JSONB, meta JSONB );', [table]);
+  return raw(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITH_META} );`, [table]);
 }
 
 /**

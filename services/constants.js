@@ -16,4 +16,12 @@ module.exports.REDIS_URL         = process.env.CLAY_STORAGE_POSTGRES_CACHE_HOST;
 
 // Application code
 module.exports.DATA_STRUCTURES   = ['components', 'layouts', 'pages', 'uris', 'lists', 'users'];
-module.exports.DATETIME_FIELDS   = ['createdAt', 'updateTime', 'publishTime', 'firstPublishTime'];
+module.exports.ENABLE_TIMESTAMP_FIELDS = process.env.CLAY_STORAGE_ENABLE_TIMESTAMP_FIELDS     || false;
+module.exports.TIMESTAMP_FIELDS  = ['created_at', 'updated_at', 'last_published_at', 'first_published_at'];
+
+let TABLE                        = 'id TEXT PRIMARY KEY NOT NULL, data JSONB',
+  ADDITIONAL                     = ', created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), ' +
+                                   'last_published_at TIMESTAMPTZ, first_published_at TIMESTAMPTZ';
+
+module.exports.TABLE_WITHOUT_META =  TABLE + ADDITIONAL ? module.exports.ENABLE_TIMESTAMP_FIELDS : '';
+module.exports.TABLE_WITH_META    =  TABLE + ', meta JSONB' + ADDITIONAL ? module.exports.ENABLE_TIMESTAMP_FIELDS : '';

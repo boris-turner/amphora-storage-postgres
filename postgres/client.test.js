@@ -167,6 +167,41 @@ describe('postgres/client', () => {
     });
   });
 
+  describe('get with timestamps', () => {
+    const queryResult = [
+        {
+          data: {
+            someData: ''
+          },
+          created_at: '',
+          updated_at: '',
+          last_published_at: '',
+          first_published_at: ''
+        }
+      ],
+      where = jest.fn(() => Promise.resolve(queryResult)),
+      select = jest.fn(() => ({ where })),
+      from = jest.fn(() => ({ select })),
+      withSchema = jest.fn(() => ({ select }));
+
+    test('gets the data column of a row from the database by an id', () => {
+      const key = 'nymag.com/_layouts/layout-column/someinstance',
+        knexMock = jest.fn(() => ({ from, withSchema, select }));
+
+      client.setClient(knexMock);
+
+      return client.get(key).then((data) => {
+        expect(select.mock.calls.length).toBe(1);
+        expect(select.mock.calls[0][0]).toBe('data');
+        expect(where.mock.calls.length).toBe(1);
+        expect(where.mock.calls[0][0]).toBe('id');
+        expect(where.mock.calls[0][1]).toBe(key);
+        expect(withSchema.mock.calls.length).toBe(1);
+        expect(data).toEqual(queryResult[0].data);
+      });
+    });
+  });
+
   describe('getMeta', () => {
     const key = 'nymag.com/_layouts/layout-column/someinstance',
       queryResult = [
