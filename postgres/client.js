@@ -85,6 +85,18 @@ function pullValFromRows(key, prop, additionalProps = []) {
   };
 }
 
+function pullTimestampFields(key, value, map) {
+  if (ENABLE_TIMESTAMP_FIELDS && !isList(key)) {
+    for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
+      let field = TIMESTAMP_FIELDS[i];
+
+      if (value && value[field] !== undefined) {
+        columnToValueMap(field, value[field], map);
+      }
+    }
+  }
+}
+
 function baseQuery(key) {
   const { schema, table } = findSchemaAndTable(key);
 
@@ -152,15 +164,7 @@ function put(key, value) {
   columnToValueMap('data', wrapInObject(key, parseOrNot(value)), map);
 
   // extract timestamp fields from data, and populate timestamp coulumns
-  if (ENABLE_TIMESTAMP_FIELDS && !isList(key)) {
-    for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
-      let field = TIMESTAMP_FIELDS[i];
-
-      if (value && value[field] !== undefined) {
-        columnToValueMap(name, value[field], map);
-      }
-    }
-  }
+  pullTimestampFields(key, value, map);
 
   let url;
 
@@ -170,7 +174,6 @@ function put(key, value) {
     // add url column to map if we're PUTting a uri
     columnToValueMap('url', url, map);
   }
-
 
   return onConflictPut(map, schema, table)
     .then(() => map.data);
@@ -245,15 +248,7 @@ function batch(ops) {
     columnToValueMap('data', wrapJSONStringInObject(key, value), map);
 
     // extract timestamp fields from data, and populate timestamp coulumns
-    if (ENABLE_TIMESTAMP_FIELDS && !isList(key)) {
-      for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
-        let field = TIMESTAMP_FIELDS[i];
-
-        if (value && value[field] !== undefined) {
-          columnToValueMap(name, value[field], map);
-        }
-      }
-    }
+    pullTimestampFields(key, value, map);
 
     // add url column to map if putting a uri
     if (isUri(key)) {

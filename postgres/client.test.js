@@ -3,7 +3,7 @@
 const client = require('./client'),
   knex = require('knex'),
   TransformStream = require('../services/list-transform-stream'),
-  { POSTGRES_DB, TABLE_WITHOUT_META, TABLE_WITH_META } = require('../services/constants'),
+  { POSTGRES_DB, TABLE_WITHOUT_META, TABLE_WITH_META, TIMESTAMP_FIELDS } = require('../services/constants'),
   { decode } = require('../services/utils');
 
 jest.mock('knex');
@@ -208,6 +208,11 @@ describe('postgres/client', () => {
       return client.get(key).then((data) => {
         expect(select.mock.calls.length).toBe(1);
         expect(select.mock.calls[0][0]).toBe('data');
+        for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
+          let field = TIMESTAMP_FIELDS[i];
+
+          expect(select.mock.calls[0][1 + i]).toBe(field);
+        }
         expect(where.mock.calls.length).toBe(1);
         expect(where.mock.calls[0][0]).toBe('id');
         expect(where.mock.calls[0][1]).toBe(key);
@@ -542,6 +547,47 @@ describe('postgres/client', () => {
     });
   });
 
+  describe('createReadStream with timestamps', () => {
+    const pipe = jest.fn(() => ({})),
+      where = jest.fn(() => ({ pipe })),
+      select = jest.fn(() => ({ where })),
+      withSchema = jest.fn(() => ({ select })),
+      knex = jest.fn(() => ({
+        withSchema,
+        select
+      })),
+      mockedTransform = {};
+
+    beforeEach(() => {
+      client.setClient(knex);
+    });
+
+    test('creates a read stream of query results with id and data columns', () => {
+      TransformStream.mockReturnValueOnce(mockedTransform);
+
+      const options = {
+          prefix: 'nymag.com/_uris',
+          values: true,
+          keys: true
+        },
+        transform = client.createReadStream(options);
+
+      expect(withSchema.mock.calls.length).toBe(0);
+      expect(select.mock.calls.length).toBe(1);
+      expect(select.mock.calls[0][0]).toBe('id');
+      expect(select.mock.calls[0][1]).toBe('data');
+      for (let i = 0; i < TIMESTAMP_FIELDS.length; i++) {
+        let field = TIMESTAMP_FIELDS[i];
+
+        expect(select.mock.calls[0][2 + i]).toBe(field);
+      }
+      expect(where.mock.calls.length).toBe(1);
+      expect(where.mock.calls[0][1]).toBe('like');
+      expect(where.mock.calls[0][2]).toBe(`${options.prefix}%`);
+      expect(transform).toBe(mockedTransform);
+    });
+  });
+
   describe('put', () => {
     const update = jest.fn(() => 'update sql'),
       insert = jest.fn(() => 'insert sql'),
@@ -612,6 +658,50 @@ describe('postgres/client', () => {
         expect(table.mock.calls[0][0]).toBe(tableName);
         expect(insert.mock.calls.length).toBe(1);
         expect(insert.mock.calls[0][0]).toEqual({ id: key, data, url: 'http://site.com/some-cool-url' });
+        expect(queryBuilder.mock.calls.length).toBe(1);
+        expect(update.mock.calls.length).toBe(1);
+        expect(raw.mock.calls.length).toBe(1);
+        expect(raw.mock.calls[0][0]).toBe('? ON CONFLICT (id) DO ? returning *');
+        expect(raw.mock.calls[0][1]).toEqual(['insert sql', 'update sql']);
+        expect(data).toEqual(data);
+      });
+    });
+  });
+
+  describe('put with timestamps', () => {
+    const update = jest.fn(() => 'update sql'),
+      insert = jest.fn(() => 'insert sql'),
+      table = jest.fn(() => ({ insert })),
+      withSchema = jest.fn(() => ({ table })),
+      queryBuilder = jest.fn(() => ({ update })),
+      raw = jest.fn(() => Promise.resolve({})),
+      knex = {
+        withSchema,
+        table,
+        raw,
+        queryBuilder
+      },
+      data = {
+        someText: '',
+        someOtherText: '',
+        created_at: '1',
+        updated_at: '2',
+        last_published_at: '3',
+        first_published_at: '4'
+      };
+
+    test('inserts a row into the database', () => {
+      const key = 'nymag.com/_layouts/layout-column/someinstance',
+        tableName = 'layout-column';
+
+      client.setClient(knex);
+
+      return client.put(key, data).then((data) => {
+        expect(withSchema.mock.calls.length).toBe(1);
+        expect(table.mock.calls.length).toBe(1);
+        expect(table.mock.calls[0][0]).toBe(tableName);
+        expect(insert.mock.calls.length).toBe(1);
+        expect(insert.mock.calls[0][0]).toEqual({ id: key, created_at: '1', updated_at: '2', last_published_at: '3', first_published_at: '4', data });
         expect(queryBuilder.mock.calls.length).toBe(1);
         expect(update.mock.calls.length).toBe(1);
         expect(raw.mock.calls.length).toBe(1);
@@ -749,6 +839,71 @@ describe('postgres/client', () => {
         for (let index = 0; index < results.length; index++) {
           expect(table.mock.calls[index][0]).toBe('uris');
           expect(insert.mock.calls[index][0]).toEqual({ id: ops[index].key, data: results[index], url: decode(ops[index].key.split('/_uris/').pop()) });
+          expect(raw.mock.calls[index][0]).toBe('? ON CONFLICT (id) DO ? returning *');
+          expect(raw.mock.calls[index][1]).toEqual(['insert sql', 'update sql']);
+        }
+      });
+    });
+  });
+
+  describe('batch with timestamps', () => {
+    test('batches inserts into the database', () => {
+      const update = jest.fn(() => 'update sql'),
+        insert = jest.fn(() => 'insert sql'),
+        table = jest.fn(() => ({ insert })),
+        withSchema = jest.fn(() => ({ table })),
+        queryBuilder = jest.fn(() => ({ update })),
+        raw = jest.fn(() => Promise.resolve({})),
+        knex = {
+          withSchema,
+          table,
+          raw,
+          queryBuilder
+        },
+        tableName = 'layout-column',
+        ops = [
+          {
+            key: 'nymag.com/_layouts/layout-column/someinstance',
+            value: {
+              someText: '',
+              someOtherText: '',
+              created_at: '1',
+              updated_at: '2',
+              last_published_at: '3',
+              first_published_at: '4'
+            }
+          },
+          {
+            key: 'nymag.com/_layouts/layout-column/someotherinstance',
+            value: {
+              someText: '',
+              someOtherText: '',
+              created_at: '5',
+              updated_at: '6',
+              last_published_at: '7',
+              first_published_at: '8'
+            }
+          }
+        ];
+
+      client.setClient(knex);
+
+      return client.batch(ops).then((results) => {
+        expect(withSchema.mock.calls.length).toBe(2);
+        expect(table.mock.calls.length).toBe(2);
+        expect(insert.mock.calls.length).toBe(2);
+        expect(queryBuilder.mock.calls.length).toBe(2);
+        expect(update.mock.calls.length).toBe(2);
+        expect(raw.mock.calls.length).toBe(2);
+
+        for (let index = 0; index < results.length; index++) {
+          expect(table.mock.calls[index][0]).toBe(tableName);
+          expect(insert.mock.calls[index][0]).toEqual({ id: ops[index].key,
+            data: results[index],
+            created_at: results[index].created_at,
+            updated_at: results[index].updated_at,
+            last_published_at: results[index].last_published_at,
+            first_published_at: results[index].first_published_at});
           expect(raw.mock.calls[index][0]).toBe('? ON CONFLICT (id) DO ? returning *');
           expect(raw.mock.calls[index][1]).toEqual(['insert sql', 'update sql']);
         }
