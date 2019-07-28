@@ -3,7 +3,7 @@
 const client = require('./client'),
   knex = require('knex'),
   TransformStream = require('../services/list-transform-stream'),
-  { POSTGRES_DB } = require('../services/constants'),
+  { POSTGRES_DB, TABLE_WITHOUT_META, TABLE_WITH_META } = require('../services/constants'),
   { decode } = require('../services/utils');
 
 jest.mock('knex');
@@ -81,6 +81,21 @@ describe('postgres/client', () => {
         partialFunction = client.pullValFromRows(key, 'data');
 
       expect(partialFunction(response)).toEqual([{ name: 'Author One' }]);
+    });
+
+    test('get additional props from a db', () => {
+      const key = 'nymag.com/_components/author-feed/instances/new',
+        response = [
+          {
+            id: 'some id',
+            data: { somekey: 'some data' },
+            additional1: 'some data 1',
+            additional2: 'some data 2'
+          }
+        ],
+        partialFunction = client.pullValFromRows(key, 'data', ['data', 'additional1', 'additional2']);
+
+      expect(partialFunction(response)).toEqual({ somekey: 'some data', additional1: 'some data 1', additional2: 'some data 2' });
     });
   });
 
@@ -171,12 +186,12 @@ describe('postgres/client', () => {
     const queryResult = [
         {
           data: {
-            someData: ''
+            someData: 'data 1'
           },
-          created_at: '',
-          updated_at: '',
-          last_published_at: '',
-          first_published_at: ''
+          created_at: '1',
+          updated_at: '2',
+          last_published_at: '3',
+          first_published_at: '4'
         }
       ],
       where = jest.fn(() => Promise.resolve(queryResult)),
@@ -197,7 +212,7 @@ describe('postgres/client', () => {
         expect(where.mock.calls[0][0]).toBe('id');
         expect(where.mock.calls[0][1]).toBe(key);
         expect(withSchema.mock.calls.length).toBe(1);
-        expect(data).toEqual(queryResult[0].data);
+        expect(data).toEqual({someData: 'data 1', created_at: '1', updated_at: '2', last_published_at: '3', first_published_at: '4'});
       });
     });
   });
@@ -315,7 +330,9 @@ describe('postgres/client', () => {
 
       return client.createTableWithMeta(args).then(() => {
         expect(raw.mock.calls.length).toBe(1);
-        expect(raw.mock.calls[0][0]).toBe('CREATE TABLE IF NOT EXISTS ?? ( id TEXT PRIMARY KEY NOT NULL, data JSONB, meta JSONB );');
+        // TODO: This test doesn't make much sense, fix me before creating a PR!
+        // expect(raw.mock.calls[0][0]).toBe('CREATE TABLE IF NOT EXISTS ?? ( id TEXT PRIMARY KEY NOT NULL, data JSONB, meta JSONB );');
+        expect(raw.mock.calls[0][0]).toBe(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITH_META} );`);
         expect(raw.mock.calls[0][1]).toEqual([args]);
       });
     });
@@ -330,7 +347,9 @@ describe('postgres/client', () => {
 
       return client.createTable(args).then(() => {
         expect(raw.mock.calls.length).toBe(1);
-        expect(raw.mock.calls[0][0]).toBe('CREATE TABLE IF NOT EXISTS ?? ( id TEXT PRIMARY KEY NOT NULL, data JSONB );');
+        // TODO: This test doesn't make much sense, fix me before creating a PR!
+        // expect(raw.mock.calls[0][0]).toBe('CREATE TABLE IF NOT EXISTS ?? ( id TEXT PRIMARY KEY NOT NULL, data JSONB );');
+        expect(raw.mock.calls[0][0]).toBe(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITHOUT_META} );`);
         expect(raw.mock.calls[0][1]).toEqual([args]);
       });
     });
