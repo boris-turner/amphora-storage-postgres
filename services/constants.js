@@ -24,3 +24,5 @@ let TABLE                        = 'id TEXT PRIMARY KEY NOT NULL, data JSONB',
 
 module.exports.TABLE_WITHOUT_META =  TABLE + ADDITIONAL;
 module.exports.TABLE_WITH_META    =  TABLE + ', meta JSONB' + ADDITIONAL;
+// TODO: Potentially replace this with "moddatetime" extension.
+module.exports.TABLE_UPDATE_TRIGGER = 'CREATE TRIGGER moddatetime_updated_at BEFORE UPDATE ON ?? FOR EACH ROW EXECUTE PROCEDURE "public".update_updated_at_timestamp()';

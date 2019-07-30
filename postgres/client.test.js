@@ -3,7 +3,7 @@
 const client = require('./client'),
   knex = require('knex'),
   TransformStream = require('../services/list-transform-stream'),
-  { POSTGRES_DB, TABLE_WITHOUT_META, TABLE_WITH_META, TIMESTAMP_FIELDS } = require('../services/constants'),
+  { POSTGRES_DB, TABLE_WITHOUT_META, TABLE_WITH_META, TIMESTAMP_FIELDS, TABLE_UPDATE_TRIGGER, ENABLE_TIMESTAMP_FIELDS } = require('../services/constants'),
   { decode } = require('../services/utils');
 
 jest.mock('knex');
@@ -337,8 +337,9 @@ describe('postgres/client', () => {
         expect(raw.mock.calls.length).toBe(1);
         // TODO: This test doesn't make much sense, fix me before creating a PR!
         // expect(raw.mock.calls[0][0]).toBe('CREATE TABLE IF NOT EXISTS ?? ( id TEXT PRIMARY KEY NOT NULL, data JSONB, meta JSONB );');
-        expect(raw.mock.calls[0][0]).toBe(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITH_META} );`);
-        expect(raw.mock.calls[0][1]).toEqual([args]);
+        expect(raw.mock.calls[0][0]).toBe(
+          `CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITH_META} );${ENABLE_TIMESTAMP_FIELDS ? ` ${TABLE_UPDATE_TRIGGER};` : ''}`);
+        expect(raw.mock.calls[0][1]).toEqual(ENABLE_TIMESTAMP_FIELDS ? [args, args] : [args]);
       });
     });
   });
@@ -354,8 +355,9 @@ describe('postgres/client', () => {
         expect(raw.mock.calls.length).toBe(1);
         // TODO: This test doesn't make much sense, fix me before creating a PR!
         // expect(raw.mock.calls[0][0]).toBe('CREATE TABLE IF NOT EXISTS ?? ( id TEXT PRIMARY KEY NOT NULL, data JSONB );');
-        expect(raw.mock.calls[0][0]).toBe(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITHOUT_META} );`);
-        expect(raw.mock.calls[0][1]).toEqual([args]);
+        expect(raw.mock.calls[0][0]).toBe(
+          `CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITHOUT_META} );${ENABLE_TIMESTAMP_FIELDS ? ` ${TABLE_UPDATE_TRIGGER};` : ''}`);
+        expect(raw.mock.calls[0][1]).toEqual(ENABLE_TIMESTAMP_FIELDS ? [args, args] : [args]);
       });
     });
   });

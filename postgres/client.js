@@ -1,6 +1,13 @@
 'use strict';
 
-const { POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, CONNECTION_POOL_MIN, CONNECTION_POOL_MAX, TABLE_WITHOUT_META, TABLE_WITH_META, ENABLE_TIMESTAMP_FIELDS, TIMESTAMP_FIELDS } = require('../services/constants'),
+const {
+    POSTGRES_USER, POSTGRES_PASSWORD,
+    POSTGRES_HOST, POSTGRES_PORT,
+    POSTGRES_DB, CONNECTION_POOL_MIN,
+    CONNECTION_POOL_MAX, TABLE_WITHOUT_META,
+    TABLE_WITH_META, ENABLE_TIMESTAMP_FIELDS,
+    TIMESTAMP_FIELDS, TABLE_UPDATE_TRIGGER
+  } = require('../services/constants'),
   { notFoundError } = require('../services/errors'),
   { parseOrNot, wrapInObject, decode } = require('../services/utils'),
   { findSchemaAndTable, wrapJSONStringInObject } = require('../services/utils'),
@@ -331,7 +338,12 @@ function putMeta(key, value) {
  * @returns {Promise}
  */
 function createTable(table) {
-  return raw(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITHOUT_META} );`, [table]);
+  let args = ENABLE_TIMESTAMP_FIELDS ? [table, table] : [table],
+    cmd = `CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITHOUT_META} );${ENABLE_TIMESTAMP_FIELDS ? ` ${TABLE_UPDATE_TRIGGER};` : ''}`;
+
+  // TODO: Not sure if update triggers are the best way to solve this issue. Another possibility is to set updated_at directly from the put calls.
+  // return raw(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITHOUT_META} );`, [table]);
+  return raw(cmd, args);
 }
 
 /**
@@ -344,7 +356,12 @@ function createTable(table) {
  * @returns {Promise}
  */
 function createTableWithMeta(table) {
-  return raw(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITH_META} );`, [table]);
+  let args = ENABLE_TIMESTAMP_FIELDS ? [table, table] : [table],
+    cmd = `CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITH_META} );${ENABLE_TIMESTAMP_FIELDS ? ` ${TABLE_UPDATE_TRIGGER};` : ''}`;
+
+  // TODO: Not sure if update triggers are the best way to solve this issue. Another possibility is to set updated_at directly from the put calls.
+  // return raw(`CREATE TABLE IF NOT EXISTS ?? ( ${TABLE_WITH_META} );`, [table]);
+  return raw(cmd, args);
 }
 
 /**
